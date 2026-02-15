@@ -2,6 +2,7 @@ import pygame
 import json
 import math
 import sys
+import random
 
 background_colour = (255,255,255)
 (width, height) = (812, 662)
@@ -16,8 +17,8 @@ class Grid:
         self.size = size      # Put size at a power of 2 (easier)
         self.grid = [[0 for _ in range(self.size)] for _ in range(self.size)]
         self.brush = 5
-        self.check_division = 64
-        self.check_division_len = int(math.sqrt(self.check_division))
+        self.check_division_len = 32
+        self.check_division = self.check_division_len*self.check_division_len
         with open("data.json", 'r') as file:
             self.data = json.load(file)
     
@@ -38,16 +39,20 @@ class Grid:
         res = 0
         for i in range(l):
             for j in range(l):
-                res += self.grid[y + i][x + j]
+                if not (((y + i) < 0) or ((y + i) > grid.size) or ((x + j) < 0) or ((x + j) > grid.size)):
+                    res += self.grid[y + i][x + j]
         return res/(l*l)
 
     def reduce(self):
-        s = self.size//self.check_division_len
+        box = self.bbox()
+        box_size = max(box[2] - box[0], box[3] - box[1])
+        delta = box_size/self.size
+        s = box_size//self.check_division_len
         l = [0]*self.check_division
         c = 0
         for y in range(self.check_division_len):
             for x in range(self.check_division_len):
-                l[c] = self.average(x*s, y*s, s)
+                l[c] = self.average(box[0] + x*s, box[1] + y*s, s)*delta
                 c += 1
         return l
     
@@ -67,6 +72,40 @@ class Grid:
         x, y = event.pos
         pygame.draw.rect(screen, (0,0,0), (x, y, self.brush, self.brush))
     
+    def bbox(self):
+        min_x, min_y = self.size - 1, self.size - 1
+        max_x, max_y = 0, 0
+        for y in range(self.size):
+            for x in range(self.size): 
+                value = self.grid[y][x]
+                if value == 1:
+                    if x < min_x:
+                        min_x = x
+                    if y < min_y:
+                        min_y = y
+                    if x > max_x:
+                        max_x = x
+                    if y > max_y:
+                        max_y = y
+        if ((max_x - min_x) > (max_y - min_y)):
+            lmax = max_x - min_x - (max_y - min_y)
+            min_y -= lmax//2
+            max_y += lmax//2
+        else:
+            lmax = max_y - min_y - (max_x - min_x)
+            min_x -= lmax//2
+            max_x += lmax//2
+        
+        if ((max_x - min_x) < self.check_division_len):
+            print((max_x - min_x))
+            min_x -= self.check_division_len
+            max_x += self.check_division_len
+        if ((max_y - min_y) < self.check_division_len):
+            min_y -= self.check_division_len
+            max_y += self.check_division_len
+            
+        return min_x, min_y, max_x, max_y
+    
     def average_json(self):
         res = [[0 for _ in range(self.check_division)] for _ in range(10)]
         for v in range(10):
@@ -75,6 +114,8 @@ class Grid:
                 for i in range(l):
                     for j in range(self.check_division):
                         res[v][j] += self.data[str(v)][i][j]
+                if (l == 0):
+                    l+=1
                 for j in range(self.check_division):
                     res[v][j] /= l
 
@@ -100,10 +141,24 @@ class Grid:
         if self.valid_zone(event):
             self.modify(event)
             self.draw(event)
-        
-grid = Grid(512)
-l = grid.reduce()
 
+class Generative:
+    def __init__(self, grid):
+        self.original_grid = grid
+        self.grid = grid.grid
+        self.goal = 0
+    
+    def generate_goal(self):
+        self.goal = random.randint(0,9)
+        return self.goal
+    
+    
+    
+
+    
+
+grid = Grid(512)
+AI = Generative(grid)
 
 running = True
 clicked = False
@@ -126,14 +181,13 @@ while running:
             #print(event)
             clicked = True
             for btn in range(10):
-                if width - 300 <= mouse[0] <= width and btn*(512/10) <= mouse[1] <= (btn+1)*(512/10):
+                if width - 300 <= mouse[0] <= width and btn*(grid.size/10) <= mouse[1] <= (btn+1)*(grid.size/10):
                     screen.fill(background_colour)
                     grid.write(str(btn))
                     grid.reset()
-                    print(btn)
             if 300 <= mouse[0] <= width-300 and 550 <= mouse[1] <= 650:
-                print(grid.ask())
-                print("submit")
+                #grid.reset()
+                print("Chiffre trouvé: " + str(grid.ask()))
         
         if event.type == pygame.MOUSEBUTTONUP:
             clicked = False
@@ -143,15 +197,15 @@ while running:
 
     for btn in range(10):
         text = smallfont.render(str(btn) , True , (0,0,0))
-        if width - 300 <= mouse[0] <= width and btn*(512/10) <= mouse[1] <= (btn+1)*(512/10):
-            pygame.draw.rect(screen,(200, 200, 200),[width - 300, btn*(512/10), 300, 50])
+        if width - 300 <= mouse[0] <= width and btn*(grid.size/10) <= mouse[1] <= (btn+1)*(grid.size/10):
+            pygame.draw.rect(screen,(200, 200, 200),[width - 300, btn*(grid.size/10), 300, 50])
             
         else:
-            pygame.draw.rect(screen,(100, 100, 100),[width - 300, btn*(512/10), 300, 50])
+            pygame.draw.rect(screen,(100, 100, 100),[width - 300, btn*(grid.size/10), 300, 50])
         
-        screen.blit(text , (width - 170, btn*(512/10)))
+        screen.blit(text , (width - 170, btn*(grid.size/10)))
     
-    text = smallfont.render("SUBMIT" , True , (0,0,0))
+    text = smallfont.render("CHECK" , True , (0,0,0))
     if 300 <= mouse[0] <= width-300 and 550 <= mouse[1] <= 650:
         pygame.draw.rect(screen,(200, 200, 200),[300, 550, width - 600, 100])
         
