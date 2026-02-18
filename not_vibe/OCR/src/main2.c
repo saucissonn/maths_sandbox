@@ -4,7 +4,7 @@
 #include <ctype.h>
 #include <SDL2/SDL.h> // nix-shell -p SDL2 pkg-config (command for nixos)
 
-int main()
+int main2()
 {
     FILE *file;
     int width = 0;

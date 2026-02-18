@@ -1,11 +1,15 @@
 CC = gcc
+PKGS = sdl3 SDL3_image
 
-CFLAGS = $(shell pkg-config --cflags sdl2 SDL2_image)
-
-LDFLAGS = $(shell pkg-config --libs sdl2 SDL2_image)
-
-
+SAN = -fsanitize=address -fno-omit-frame-pointer
+CFLAGS  = -g $(SAN) $(shell pkg-config --cflags $(PKGS))
+LDFLAGS = $(SAN) $(shell pkg-config --libs $(PKGS))
 
 n: main.c
-
 	$(CC) main.c -o n $(CFLAGS) $(LDFLAGS)
+
+run: n
+	./n
+
+clean:
+	rm -f n
