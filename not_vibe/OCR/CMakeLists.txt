@@ -21,9 +21,11 @@ if(UNIX)
         ${SDL2_IMAGE_INCLUDE_DIRS}
     )
 
+# m is math
     target_link_libraries(${EXEC_NAME} PRIVATE
         ${SDL2_LIBRARIES}
         ${SDL2_IMAGE_LIBRARIES}
+        m  
     )
 
 endif()
