@@ -24,4 +24,6 @@ extern double learning_coeff;
 extern int nb_hidden_neurons;
 extern int nb_output_neurons;
 
+extern int INIT_CAP_STACK;
+
 #endif

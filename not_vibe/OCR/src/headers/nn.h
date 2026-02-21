@@ -1,10 +1,14 @@
 #ifndef NN_H
 #define NN_H
 
+#include <SDL2/SDL_image.h>
+#include <stdio.h>
+#include <stdlib.h>
+
 struct layer {
     char *name;
     int previous_size;
-    int current_size;  //16
+    int current_size;  //256 then 128
     double *weights;   //matrix (output_size × input_size)
     double *biases;    //output_size
     double *output;    //activations
@@ -30,7 +34,9 @@ void update_SGD(struct layer *curr, struct layer *prev);
 
 void print_outputs(struct layer l);
 int index_max_output(struct layer l);
+void put_in_output(SDL_Surface *rgba);
 
 void browse(void);
+void check(char *path, int expected);
 
 #endif

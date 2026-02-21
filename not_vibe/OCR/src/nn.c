@@ -1,5 +1,7 @@
-#include "nn.h"
-#include "globals.h"
+#include "headers/nn.h"
+#include "headers/globals.h"
+#include "headers/sdl_img.h"
+#include "headers/data.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -82,6 +84,18 @@ void print_outputs(struct layer l) {
     }
 }
 
+void put_in_output(SDL_Surface *rgba) {
+    raw_data = convert_surface_to_double(rgba);
+    
+    int c = 0;
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            (input_layer.output)[c] = raw_data[y][x];
+            c++;
+        }
+    }
+}
+
 int index_max_output(struct layer l) {
     int cs = l.current_size;
     int maxi = 0;
@@ -90,6 +104,15 @@ int index_max_output(struct layer l) {
             maxi = i;
     }
     return maxi;
+}
+
+void update_learning_coeff() {
+    if (c_steps > 10000) {
+        if (c_steps % 3000 == 0) {
+            learning_coeff *= 0.98;
+            if (learning_coeff < 0.0005) learning_coeff = 0.0005;
+        }
+    }
 }
 
 void soft_max(struct layer *l) {
@@ -160,15 +183,36 @@ void update_SGD(struct layer *curr, struct layer *prev) {
     int cs = curr->current_size;
     int ps = curr->previous_size;
 
+    double clip = 1.0;     // or 5.0
+    double lambda = 1e-4;  // weight decay
+    double grad;
+    double d;
+
     for (int i = 0; i < cs; i++) {
+        d = curr->delta[i];
+
+        //clip delta (to not have huge deltas)
+        if (d > clip) d = clip;
+        if (d < -clip) d = -clip;
+
         for (int j = 0; j < ps; j++) {
-            curr->weights[i*ps + j] -= learning_coeff * curr->delta[i] * prev->output[j];
+            int idx = i*ps + j;
+
+            grad = d * prev->output[j];
+
+            //L2 regularization
+            curr->weights[idx] -= learning_coeff * (grad + lambda * curr->weights[idx]);
         }
-        curr->biases[i] -= learning_coeff * curr->delta[i];
+
+        curr->biases[i] -= learning_coeff * d;
     }
 }
 
 void browse(void) {
+
+    select_random_file();
+    put_in_output(rgba);
+
     forward(&input_layer, &hidden_layer1);
     relu(&hidden_layer1);
     forward(&hidden_layer1, &hidden_layer2);
@@ -183,7 +227,7 @@ void browse(void) {
     int result = 0;
     if (idx_max_output == expected)
         result = 1;
-    printf("loss: %f, value: %f, steps: %d, expected: %d, get: %d, result: %d\n", loss, output_layer.output[expected], c_steps++, expected, idx_max_output, result);
+    printf("loss: %f, value: %f, steps: %d, expected: %d, get: %d, result: %d, lr: %f\n", loss, output_layer.output[expected], c_steps++, expected, idx_max_output, result, learning_coeff);
 
     //print_outputs(output_layer);
 
@@ -199,4 +243,30 @@ void browse(void) {
     update_SGD(&output_layer,  &hidden_layer2);
     update_SGD(&hidden_layer2, &hidden_layer1);
     update_SGD(&hidden_layer1, &input_layer);
+
+    update_learning_coeff();
 }
+
+void check(char *path, int expected) {
+    create_window(path);
+    put_in_output(rgba);
+
+    forward(&input_layer, &hidden_layer1);
+    relu(&hidden_layer1);
+    forward(&hidden_layer1, &hidden_layer2);
+    relu(&hidden_layer2);
+    forward(&hidden_layer2, &output_layer);
+    soft_max(&output_layer);
+
+    double p = output_layer.output[expected];
+    if (p < 1e-15) p = 1e-15;
+    loss = -log(p);
+    int idx_max_output = index_max_output(output_layer);
+    int result = 0;
+    if (idx_max_output == expected)
+        result = 1;
+    printf("CHECK loss: %f, value: %f, steps: %d, expected: %d, get: %d, result: %d, lr: %f\n", loss, output_layer.output[expected], c_steps++, expected, idx_max_output, result, learning_coeff);
+
+    print_outputs(output_layer);
+}
+

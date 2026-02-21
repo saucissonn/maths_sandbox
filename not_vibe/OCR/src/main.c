@@ -4,16 +4,18 @@
 #include <time.h>
 #include <stdlib.h>
 
-#include "globals.h"
-#include "sdl_img.h"
-#include "data.h"
-#include "nn.h"
+#include "headers/globals.h"
+#include "headers/sdl_img.h"
+#include "headers/data.h"
+#include "headers/nn.h"
 
 //open an image and display it on a window
 
-int main(void)
+int main2(void)
 {
     srand(time(NULL));
+
+    printf("Hello World!\n");
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         printf("SDL_Init error: %s\n", SDL_GetError());
@@ -39,27 +41,31 @@ int main(void)
     hidden_layer2 = init_layer("hidden", nb_hidden_neurons, nb_hidden_neurons/2);
     output_layer = init_layer("output", nb_hidden_neurons/2, nb_output_neurons);
 
+    FILE *f2 = fopen("../src/model.bin", "rb");
+
+    fseek(f2, 0, SEEK_END);
+    long size = ftell(f2);
+    rewind(f2);
+
+    if (size == 0) {
+        fclose(f2);
+    }
+    else {
+        layer_load(f2, &hidden_layer1);
+        layer_load(f2, &hidden_layer2);
+        layer_load(f2, &output_layer);
+        fclose(f2);
+    }
+
     int running = 1;
 
-    while (running && c_steps < 50) {
-
-        select_random_file();
+    while (running && c_steps < 100000) {
 
         //SDL_Surface *screen = SDL_GetWindowSurface(win);
 
         //display_SDL_matrix(rgba, width, height);
         //SDL_BlitSurface(rgba, NULL, screen, NULL);
         //SDL_UpdateWindowSurface(win);
-
-        raw_data = convert_surface_to_double(rgba);
-
-        int c = 0;
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                (input_layer.output)[c] = raw_data[y][x];
-                c++;
-            }
-        }
 
         /*
         SDL_Event e;
@@ -68,11 +74,20 @@ int main(void)
         }
         SDL_Delay(5);
         */
+
         browse();
 
         free_matrix(raw_data, height);
         raw_data = NULL;
     }
+
+    check("../src/training/3/12.png", 3);
+
+    FILE *f3 = fopen("../src/model.bin", "wb");
+    layer_save(f3, &hidden_layer1);
+    layer_save(f3, &hidden_layer2);
+    layer_save(f3, &output_layer);
+    fclose(f3);
 
     free_layer(input_layer);
     free_layer(hidden_layer1);

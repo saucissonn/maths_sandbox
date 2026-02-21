@@ -3,11 +3,17 @@ cmake_minimum_required(VERSION 3.27)
 project(OCR)
 
 file(GLOB SRC_FILES
-    "src/main.c"
-    "src/globals.c"
-    "src/sdl_img.c"
+    "src/main2.c"
     "src/data.c"
+    "src/display.c"
+    "src/fs.c"
+    "src/globals.c"
+    "src/image.c"
+    "src/matrix.c"
     "src/nn.c"
+    "src/sdl_img.c"
+    "src/segment.c"
+    "src/stack.c"
 )
 
 set(EXEC_NAME "n")

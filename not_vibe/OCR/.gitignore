@@ -1,2 +1,4 @@
 build/
 src/training/
+moby_dick/
+model.bin
