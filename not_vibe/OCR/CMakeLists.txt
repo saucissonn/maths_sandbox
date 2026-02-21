@@ -2,13 +2,23 @@ cmake_minimum_required(VERSION 3.27)
 
 project(OCR)
 
-file(GLOB SRC_FILES "src/main.c")
+file(GLOB SRC_FILES
+    "src/main.c"
+    "src/globals.c"
+    "src/sdl_img.c"
+    "src/data.c"
+    "src/nn.c"
+)
 
 set(EXEC_NAME "n")
 
 add_executable(${EXEC_NAME} ${SRC_FILES})
 
 #target_include_directories(${EXEC_NAME} PUBLIC include src/header)
+
+target_include_directories(${EXEC_NAME} PRIVATE
+    src
+)
 
 if(UNIX)
     message(STATUS "linux detected")
@@ -21,11 +31,10 @@ if(UNIX)
         ${SDL2_IMAGE_INCLUDE_DIRS}
     )
 
-# m is math
     target_link_libraries(${EXEC_NAME} PRIVATE
         ${SDL2_LIBRARIES}
         ${SDL2_IMAGE_LIBRARIES}
-        m  
+        m
     )
 
 endif()

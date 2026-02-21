@@ -106,13 +106,19 @@ void display_SDL_matrix(SDL_Surface * input, int width, int height) {
     Uint8 *base = (Uint8*)input->pixels;
     int pitch = input->pitch;
     int average;
+    Uint8 *row;
+    Uint8 r;
+    Uint8 g;
+    Uint8 b;
+    Uint8 a;
+
     for (int y = 0; y < height; y++) {
-        Uint8 *row = base + y * pitch; //row modifies input, because it points to it
+        row = base + y * pitch; //row modifies input, because it points to it
         for (int x = 0; x < width; x++) {
-            Uint8 r = row[x*4 + 0];
-            Uint8 g = row[x*4 + 1];
-            Uint8 b = row[x*4 + 2];
-            Uint8 a = row[x*4 + 3];
+            r = row[x*4 + 0];
+            g = row[x*4 + 1];
+            b = row[x*4 + 2];
+            a = row[x*4 + 3];
 
             average = (r+g+b)/3; //to invert black and white do 255 - the value
 
@@ -126,26 +132,34 @@ void display_SDL_matrix(SDL_Surface * input, int width, int height) {
 }
 
 double **convert_surface_to_double(SDL_Surface * input) {
-    double **output = malloc((input->h)*sizeof(*output));
-    for(int i = 0; i < (input->h); i++)
-        output[i] = malloc((input->w) * sizeof(*(output[i])));
-    Uint8 *base = (Uint8*)input->pixels;
+    //ensure rgba is locked, unless we don't know the behavior
     int pitch = input->pitch;
+    int w = input->w;
+    double **output = malloc(pitch*sizeof(*output));
+    for(int i = 0; i < pitch; i++)
+        output[i] = malloc(w * sizeof(*(output[i])));
+    Uint8 *base = (Uint8*)input->pixels;
+    int average;
+    Uint8 *row;
+    double v;
+    Uint8 r;
+    Uint8 g;
+    Uint8 b;
+    Uint8 a;
 
-    for (int y = 0; y < input->h; y++) {
-        Uint8 *row = base + y * pitch; //row modifies input, because it points to it
-        for (int x = 0; x < input->w; x++) {
-            Uint8 r = row[x*4 + 0];
-            Uint8 g = row[x*4 + 1];
-            Uint8 b = row[x*4 + 2];
-            Uint8 a = row[x*4 + 3];
+    for (int y = 0; y < height; y++) {
+        row = base + y * pitch; //row modifies input, because it points to it
+        for (int x = 0; x < width; x++) {
+            r = row[x*4 + 0];
+            g = row[x*4 + 1];
+            b = row[x*4 + 2];
 
-            double v = ((r+g+b)/3.0) / 255.0;
+            v = (r+g+b)/765.0;
 
             output[y][x] = v;
-            (void)a;
         }
     }
+    if (SDL_MUSTLOCK(input)) SDL_UnlockSurface(input); //like a "free()" because we don't need it anymore
     return output;
 }
 
@@ -222,28 +236,6 @@ int select_random_file() {
     return 0;
 }
 
-/*
-void multiplyMatrix(int m1[][C1], int m2[][C2]) //TODO make it return int**
-{
-    int result[R1][C2];
-
-    printf("Resultant Matrix is:\n");
-
-    for (int i = 0; i < R1; i++) {
-        for (int j = 0; j < C2; j++) {
-            result[i][j] = 0;
-
-            for (int k = 0; k < R2; k++) {
-                result[i][j] += m1[i][k] * m2[k][j];
-            }
-
-            printf("%d\t", result[i][j]);
-        }
-
-        printf("\n");
-    }
-}
-*/
 int **convolution(int *input, int **matrix) {
     int **output;
     (void)input;
@@ -345,9 +337,8 @@ void soft_max(struct layer *l) {
 
 void sigmoid(struct layer *l) {
     int cs = l->current_size;
-    double one = 1;
     for (int i = 0; i < cs; i++) {
-        l->output[i] = one/(one + exp(-(l->output)[i]));
+        l->output[i] = 1./(1. + exp(-(l->output)[i]));
     }
 }
 
@@ -436,7 +427,7 @@ void f_and_b() {
     update_SGD(&hidden_layer1, &input_layer);
 }
 
-int main(void)
+int main4(void)
 {
     srand(time(NULL));
 
@@ -466,7 +457,7 @@ int main(void)
 
     int running = 1;
 
-    while (running) {
+    while (running && c_steps < 50) {
 
         select_random_file();
 
