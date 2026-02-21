@@ -168,7 +168,7 @@ void update_SGD(struct layer *curr, struct layer *prev) {
     }
 }
 
-void f_and_b(void) {
+void browse(void) {
     forward(&input_layer, &hidden_layer1);
     relu(&hidden_layer1);
     forward(&hidden_layer1, &hidden_layer2);

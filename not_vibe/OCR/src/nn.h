@@ -31,6 +31,6 @@ void update_SGD(struct layer *curr, struct layer *prev);
 void print_outputs(struct layer l);
 int index_max_output(struct layer l);
 
-void f_and_b(void);
+void browse(void);
 
 #endif

@@ -68,7 +68,7 @@ int main(void)
         }
         SDL_Delay(5);
         */
-        f_and_b();
+        browse();
 
         free_matrix(raw_data, height);
         raw_data = NULL;
