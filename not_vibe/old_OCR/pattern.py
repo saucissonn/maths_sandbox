@@ -17,7 +17,7 @@ class Grid:
         self.size = size      # Put size at a power of 2 (easier)
         self.grid = [[0 for _ in range(self.size)] for _ in range(self.size)]
         self.brush = 5
-        self.check_division_len = 32
+        self.check_division_len = 8
         self.check_division = self.check_division_len*self.check_division_len
         with open("data.json", 'r') as file:
             self.data = json.load(file)
@@ -183,7 +183,7 @@ while running:
             for btn in range(10):
                 if width - 300 <= mouse[0] <= width and btn*(grid.size/10) <= mouse[1] <= (btn+1)*(grid.size/10):
                     screen.fill(background_colour)
-                    grid.write(str(btn))
+                    #grid.write(str(btn))
                     grid.reset()
             if 300 <= mouse[0] <= width-300 and 550 <= mouse[1] <= 650:
                 #grid.reset()
