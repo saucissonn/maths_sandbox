@@ -1,4 +1,8 @@
 build/
 src/training/
 moby_dick/
+moby_dick_save/
 model.bin
+.venv/
+src/images/
+src/images_ans/

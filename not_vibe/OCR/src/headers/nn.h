@@ -36,7 +36,7 @@ void print_outputs(struct layer l);
 int index_max_output(struct layer l);
 void put_in_output(SDL_Surface *rgba);
 
-void browse(void);
+void browse(double *input);
 void check(char *path, int expected);
 
 #endif

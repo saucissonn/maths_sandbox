@@ -84,13 +84,24 @@ void print_outputs(struct layer l) {
     }
 }
 
-void put_in_output(SDL_Surface *rgba) {
+void put_in_output_rgba(SDL_Surface *rgba) {
     raw_data = convert_surface_to_double(rgba);
     
     int c = 0;
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             (input_layer.output)[c] = raw_data[y][x];
+            c++;
+        }
+    }
+}
+
+void put_in_output_matrix(double *input, int W, int H) {
+
+    int c = 0;
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            (input_layer.output)[c] = input[y*W + x];
             c++;
         }
     }
@@ -208,17 +219,17 @@ void update_SGD(struct layer *curr, struct layer *prev) {
     }
 }
 
-void browse(void) {
+void browse(double *input) {
 
-    select_random_file();
-    put_in_output(rgba);
-
+    put_in_output_matrix(input, 28, 28);
+    
     forward(&input_layer, &hidden_layer1);
     relu(&hidden_layer1);
     forward(&hidden_layer1, &hidden_layer2);
     relu(&hidden_layer2);
     forward(&hidden_layer2, &output_layer);
     soft_max(&output_layer);
+
 
     double p = output_layer.output[expected];
     if (p < 1e-15) p = 1e-15;
@@ -227,7 +238,7 @@ void browse(void) {
     int result = 0;
     if (idx_max_output == expected)
         result = 1;
-    printf("loss: %f, value: %f, steps: %d, expected: %d, get: %d, result: %d, lr: %f\n", loss, output_layer.output[expected], c_steps++, expected, idx_max_output, result, learning_coeff);
+    printf("loss: %f, value: %f, steps: %d, expected: %c, get: %c, result: %d, lr: %f\n", loss, output_layer.output[expected], c_steps++, index_to_char(expected), index_to_char(idx_max_output), result, learning_coeff);
 
     //print_outputs(output_layer);
 
@@ -249,7 +260,7 @@ void browse(void) {
 
 void check(char *path, int expected) {
     create_window(path);
-    put_in_output(rgba);
+    put_in_output_rgba(rgba);
 
     forward(&input_layer, &hidden_layer1);
     relu(&hidden_layer1);
@@ -269,4 +280,3 @@ void check(char *path, int expected) {
 
     print_outputs(output_layer);
 }
-

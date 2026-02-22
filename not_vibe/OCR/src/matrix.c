@@ -5,7 +5,11 @@
 
 void free_matrix(double **m, int H) {
     if (!m) return;
-    for (int r = 0; r < H; r++) free(m[r]);
+    for (int r = 0; r < H; r++) {
+        if (m[r]) {
+            free(m[r]);
+        }
+    }
     free(m);
 }
 

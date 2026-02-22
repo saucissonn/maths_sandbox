@@ -10,6 +10,7 @@ extern SDL_Surface *rgba;
 
 extern int width;
 extern int height;
+extern int top;
 
 extern int expected;
 extern double loss;
@@ -17,6 +18,7 @@ extern double **raw_data;
 
 extern int random_x;
 extern DIR *dir;
+extern FILE *file_ans;
 
 extern int c_steps;
 

@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.27)
 project(OCR)
 
 file(GLOB SRC_FILES
-    "src/main2.c"
+    "src/main.c"
     "src/data.c"
     "src/display.c"
     "src/fs.c"

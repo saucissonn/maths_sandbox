@@ -254,10 +254,93 @@ static void print_28x28_ascii(const double *x) {
     }
 }
 
-void segment_and_print(double **data, int H, int W) {
-    const int row_ink_thr = 2;
+const int row_ink_thr = 10;
+const int line_min_gap = 2;
+const int line_min_h = 10;
+
+static int count_total_chars(double **data, int H, int W,
+                             Line *lines, int nlines,
+                             int col_ink_thr, int char_min_gap, int char_min_w, int char_min_area)
+{
+    int total = 0;
+    for (int li = 0; li < nlines; li++) {
+        int nch = 0;
+        Box *chars = segment_chars_in_line(data, H, W, lines[li], &nch,
+                                           col_ink_thr, char_min_gap, char_min_w, char_min_area);
+        if (chars) {
+            total += nch;
+            free(chars);
+        }
+    }
+    return total;
+}
+
+double **segment_to_matrix_28x28(double **data, int H, int W, int *out_n) {
+    if (out_n) *out_n = 0;
+
+    const int row_ink_thr = 10;
     const int line_min_gap = 2;
     const int line_min_h = 10;
+
+    int nlines = 0;
+    Line *lines = segment_lines(data, H, W, &nlines, row_ink_thr, line_min_gap, line_min_h);
+    if (!lines || nlines <= 0) return NULL;
+
+    const int col_ink_thr   = 0;
+    const int char_min_gap  = 1;
+    const int char_min_w    = 0;
+    const int char_min_area = 5;
+
+    int total = count_total_chars(data, H, W, lines, nlines,
+                                  col_ink_thr, char_min_gap, char_min_w, char_min_area);
+
+    if (total <= 0) {
+        free(lines);
+        return NULL;
+    }
+
+    double **X = (double **)calloc((size_t)total, sizeof(double *));
+    if (!X) { free(lines); return NULL; }
+
+    int k = 0;
+    for (int li = 0; li < nlines; li++) {
+        int nch = 0;
+        Box *chars = segment_chars_in_line(data, H, W, lines[li], &nch,
+                                           col_ink_thr, char_min_gap, char_min_w, char_min_area);
+        if (!chars || nch <= 0) {
+            free(chars);
+            continue;
+        }
+
+        for (int i = 0; i < nch; i++) {
+            double *x28 = box_to_28x28(data, H, W, chars[i], 1, 0.5);
+            if (!x28) continue;
+
+            X[k++] = x28;
+        }
+
+        free(chars);
+    }
+
+    free(lines);
+
+    if (k != total) {
+        double **X2 = (double **)realloc(X, (size_t)k * sizeof(double *));
+        if (X2) X = X2;
+    }
+
+    if (out_n) *out_n = k;
+    return X;
+}
+
+void free_matrix_784(double **X, int n)
+{
+    if (!X) return;
+    for (int i = 0; i < n; i++) free(X[i]);
+    free(X);
+}
+
+void segment_and_print(double **data, int H, int W) {
 
     int nlines = 0;
     Line *lines = segment_lines(data, H, W, &nlines, row_ink_thr, line_min_gap, line_min_h);
@@ -284,7 +367,7 @@ void segment_and_print(double **data, int H, int W) {
         for (int i = 0; i < nch; i++) {
             Box b = chars[i];
             printf("char %d: r[%d..%d] c[%d..%d] area=%d\n",
-                   i, b.min_r, b.max_r, b.min_c, b.max_c, b.area);
+                    i, b.min_r, b.max_r, b.min_c, b.max_c, b.area);
 
             double *x28 = box_to_28x28(data, H, W, b, 1, 0.5);
             if (x28) {
@@ -293,9 +376,7 @@ void segment_and_print(double **data, int H, int W) {
                 free(x28);
             }
         }
-
         free(chars);
     }
-
     free(lines);
 }
