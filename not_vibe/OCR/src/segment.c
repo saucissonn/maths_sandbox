@@ -287,7 +287,7 @@ double **segment_to_matrix_28x28(double **data, int H, int W, int *out_n) {
     if (!lines || nlines <= 0) return NULL;
 
     const int col_ink_thr   = 0;
-    const int char_min_gap  = 1;
+    const int char_min_gap  = 2;
     const int char_min_w    = 0;
     const int char_min_area = 5;
 
