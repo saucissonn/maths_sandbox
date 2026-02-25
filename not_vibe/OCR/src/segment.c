@@ -12,27 +12,32 @@ static Line *segment_lines(double **img, int H, int W,
                            int min_height)
 {
     *out_n = 0;
-    int *rowsum = (int*)calloc((size_t)H, sizeof(int));
+    int *rowsum = (int*)calloc((size_t)H, sizeof(int)); //count black pixels per row
     if (!rowsum) return NULL;
 
-    for (int y = 0; y < H; y++) {
-        int s = 0;
-        for (int x = 0; x < W; x++) s += (img[y][x] > 0);
+    int y = 0;
+    int s = 0;
+    int x = 0;
+    for (y = 0; y < H; y++) {
+        s = 0;
+        for (x = 0; x < W; x++) s += (img[y][x] > 0);
         rowsum[y] = s;
     }
 
-    int cap = 16, n = 0;
+    int cap = 16;   //max nb of line on the image
+    int n = 0;
     Line *lines = (Line*)malloc((size_t)cap * sizeof(Line));
     if (!lines) { free(rowsum); return NULL; }
 
-    int y = 0;
+    y = 0;
+    int start = 0;
+    int gaprun = 0;
     while (y < H) {
         while (y < H && rowsum[y] <= row_ink_thr) y++;
         if (y >= H) break;
 
-        int start = y;
-
-        int gaprun = 0;
+        start = y;
+        gaprun = 0;
         while (y < H) {
             if (rowsum[y] <= row_ink_thr) gaprun++;
             else gaprun = 0;
