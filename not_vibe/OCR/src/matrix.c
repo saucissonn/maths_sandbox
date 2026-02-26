@@ -3,7 +3,7 @@
 
 #include "headers/matrix.h"
 
-void free_matrix(double **m, int H) {
+void free_matrix(double **m, int H) { //just free a matrix of height H
     if (!m) return;
     for (int r = 0; r < H; r++) {
         if (m[r]) {
@@ -14,6 +14,8 @@ void free_matrix(double **m, int H) {
 }
 
 double **surface_to_binary_matrix(SDL_Surface *input, int top_crop, int thr, int *outH, int *outW) {
+    //convert a SDL surface (often the whole image) to a matrix with 0s and 1s (no color). from top_crop to the bottom of the window
+    //outH and and outW to not rely on the input value (often named rgba)
     if (!input) return NULL;
 
     if (SDL_MUSTLOCK(input)) SDL_LockSurface(input);
@@ -43,20 +45,26 @@ double **surface_to_binary_matrix(SDL_Surface *input, int top_crop, int thr, int
 
     Uint8 *base = (Uint8*)input->pixels;
     int pitch = input->pitch;
+    int rr;
+    Uint8 *row;
+    Uint8 r;
+    Uint8 g;
+    Uint8 b;
+    int lum;
 
     for (int y = top_crop; y < Hfull; y++) {
-        int rr = y - top_crop;
-        Uint8 *row = base + y * pitch;
+        rr = y - top_crop;
+        row = base + y * pitch;
         for (int x = 0; x < W; x++) {
-            Uint8 r = row[x*4 + 0];
-            Uint8 g = row[x*4 + 1];
-            Uint8 b = row[x*4 + 2];
-            int lum = (r + g + b) / 3;
+            r = row[x*4 + 0];
+            g = row[x*4 + 1];
+            b = row[x*4 + 2];
+            lum = (r + g + b) / 3;
             out[rr][x] = (lum < thr) ? 1.0 : 0.0;
         }
     }
 
-    if (SDL_MUSTLOCK(input)) SDL_UnlockSurface(input);
+    if (SDL_MUSTLOCK(input)) SDL_UnlockSurface(input); //have to unlock or undefined behavior
 
     *outH = H;
     *outW = W;

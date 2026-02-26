@@ -1,3 +1,5 @@
+// 67 + ratio. -Cam
+
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h> // nix-shell -p SDL2 SDL2_image pkg-config (command for nixos)
 #include <stdio.h>
@@ -21,15 +23,16 @@ const int thr = 190;
 int out_n = 0;
 int running = 1;
 int training = 1;
+int raw_size = 28;
 
 void train() {
-    free_matrix(raw_data, 28);
+    free_matrix(raw_data, raw_size);
     if (select_random_file_and_load(&rgba, &width, &height) != 0) running = 0;
     Hbin = 0, Wbin = 0;
     out_n = 0;
     raw_data = surface_to_binary_matrix(rgba, top, thr, &Hbin, &Wbin);
     raw_data = segment_to_matrix_28x28(raw_data, Wbin, Hbin, &out_n);
-    blit_black_white(win, rgba, thr);
+    blit_black_white(win, rgba, thr); //display on screen
     rewind(file_ans);
     for (int i = 0; i < out_n; i++) {
         expected = char_to_index(fgetc(file_ans));
@@ -59,15 +62,15 @@ int main(void)
         IMG_Quit(); SDL_Quit();
         return 1;
     }
-  
+
     if (select_random_file_and_load(&rgba, &width, &height) != 0) {
         SDL_DestroyWindow(win);
         IMG_Quit(); SDL_Quit();
         return 1;
     }
 
-    SDL_SetWindowSize(win, width, height); 
-    int nb_input_neurons = 28*28;
+    SDL_SetWindowSize(win, width, height);
+    int nb_input_neurons = raw_size*raw_size;
 
     input_layer = init_layer("input", nb_input_neurons, nb_input_neurons);
     hidden_layer1 = init_layer("hidden", nb_input_neurons, nb_hidden_neurons);

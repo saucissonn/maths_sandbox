@@ -10,7 +10,7 @@ static Line *segment_lines(double **img, int H, int W,
                            int row_ink_thr,
                            int min_gap,
                            int min_height)
-{
+{ //returns a list of lines
     *out_n = 0;
     int *rowsum = (int*)calloc((size_t)H, sizeof(int)); //count black pixels per row
     if (!rowsum) return NULL;
@@ -86,6 +86,7 @@ static Line *segment_lines(double **img, int H, int W,
 }
 
 static Box make_box_from_xrange(double **img, int y0, int y1, int x0, int x1) {
+    //transforms a matrix to a box. gives area of black pixels
     Box b;
     b.min_r = y1; b.max_r = y0;
     b.min_c = x0; b.max_c = x1;
@@ -93,7 +94,7 @@ static Box make_box_from_xrange(double **img, int y0, int y1, int x0, int x1) {
 
     for (int y = y0; y <= y1; y++) {
         for (int x = x0; x <= x1; x++) {
-            if (img[y][x] > 0.5) {
+            if (img[y][x] > 0.5) { //if the pixel is black
                 b.area++;
                 if (y < b.min_r) b.min_r = y;
                 if (y > b.max_r) b.max_r = y;
@@ -112,13 +113,13 @@ static Box *segment_chars_in_line(double **img, int H, int W,
                                  int min_gap,
                                  int min_width,
                                  int min_area)
-{
+{ //separates the characters in a line. also gives the out_n which is the nb of char
     *out_n = 0;
     int y0 = clampi(line.y0, 0, H-1);
     int y1 = clampi(line.y1, 0, H-1);
     if (y1 < y0) return NULL;
 
-    int *colsum = (int*)calloc((size_t)W, sizeof(int));
+    int *colsum = (int*)calloc((size_t)W, sizeof(int)); //sum of black pixels of each row in the line
     if (!colsum) return NULL;
 
     for (int x = 0; x < W; x++) {
@@ -136,26 +137,32 @@ static Box *segment_chars_in_line(double **img, int H, int W,
     }
 
     int x = 0;
+    Box b;
+    Box *tmp;
+    int end;
+    int start;
+    int w;
+    int gaprun;
     while (x < W) {
         while (x < W && colsum[x] <= col_ink_thr) x++;
         if (x >= W) break;
 
-        int start = x;
-        int gaprun = 0;
+        start = x;
+        gaprun = 0;
 
         while (x < W) {
             if (colsum[x] <= col_ink_thr) gaprun++;
             else gaprun = 0;
 
             if (gaprun >= min_gap) {
-                int end = x - gaprun;
-                int w = end - start + 1;
+                end = x - gaprun;
+                w = end - start + 1;
                 if (w >= min_width) {
-                    Box b = make_box_from_xrange(img, y0, y1, start, end);
+                    b = make_box_from_xrange(img, y0, y1, start, end); //to get the area
                     if (b.area >= min_area && b.max_r >= b.min_r) {
                         if (n == cap) {
                             cap *= 2;
-                            Box *tmp = (Box*)realloc(boxes, (size_t)cap * sizeof(Box));
+                            tmp = (Box*)realloc(boxes, (size_t)cap * sizeof(Box));
                             if (!tmp) { free(colsum); free(boxes); return NULL; }
                             boxes = tmp;
                         }
@@ -168,14 +175,14 @@ static Box *segment_chars_in_line(double **img, int H, int W,
         }
 
         if (x >= W) {
-            int end = W - 1;
-            int w = end - start + 1;
+            end = W - 1;
+            w = end - start + 1;
             if (w >= min_width) {
-                Box b = make_box_from_xrange(img, y0, y1, start, end);
+                b = make_box_from_xrange(img, y0, y1, start, end);
                 if (b.area >= min_area && b.max_r >= b.min_r) {
                     if (n == cap) {
                         cap *= 2;
-                        Box *tmp = (Box*)realloc(boxes, (size_t)cap * sizeof(Box));
+                        tmp = (Box*)realloc(boxes, (size_t)cap * sizeof(Box));
                         if (!tmp) { free(colsum); free(boxes); return NULL; }
                         boxes = tmp;
                     }
@@ -190,7 +197,7 @@ static Box *segment_chars_in_line(double **img, int H, int W,
     return boxes;
 }
 
-static Box pad_box(Box b, int H, int W, int pad) {
+static Box pad_box(Box b, int H, int W, int pad) { //just to have valid coordinates
     b.min_r = clampi(b.min_r - pad, 0, H-1);
     b.min_c = clampi(b.min_c - pad, 0, W-1);
     b.max_r = clampi(b.max_r + pad, 0, H-1);
@@ -198,10 +205,10 @@ static Box pad_box(Box b, int H, int W, int pad) {
     return b;
 }
 
-static double *extract_square_from_box(double **img, Box b, int *S_out) {
+static double *extract_square_from_box(double **img, Box b, int *S_out) { //from a box to a square matrix
     int h = b.max_r - b.min_r + 1;
     int w = b.max_c - b.min_c + 1;
-    int S = (h > w) ? h : w;
+    int S = (h > w) ? h : w; //get the longest side
 
     double *sq = (double*)calloc((size_t)S * (size_t)S, sizeof(double));
     if (!sq) return NULL;
@@ -219,14 +226,16 @@ static double *extract_square_from_box(double **img, Box b, int *S_out) {
     return sq;
 }
 
-static double *resize_nn(const double *in, int S, int newS) {
+static double *resize_nn(const double *in, int S, int newS) { //resize a list (which is a square matrix in our case)
     double *out = (double*)malloc((size_t)newS * (size_t)newS * sizeof(double));
     if (!out) return NULL;
 
+    int src_r;
+    int src_c;
     for (int r = 0; r < newS; r++) {
         for (int c = 0; c < newS; c++) {
-            int src_r = (r * S) / newS;
-            int src_c = (c * S) / newS;
+            src_r = (r * S) / newS;
+            src_c = (c * S) / newS;
             out[r*newS + c] = in[src_r*S + src_c];
         }
     }
