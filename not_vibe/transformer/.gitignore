@@ -5,5 +5,4 @@ moby_dick_save/
 model.bin
 venv/
 .venv/
-src/images/
-src/images_ans/
+src/tokens/

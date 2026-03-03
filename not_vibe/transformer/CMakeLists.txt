@@ -10,6 +10,7 @@ file(GLOB SRC_FILES
     "src/matrix.c"
     "src/nn.c"
     "src/stack.c"
+    "src/token.c"
 )
 
 set(EXEC_NAME "n")

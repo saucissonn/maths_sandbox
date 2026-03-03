@@ -5,11 +5,7 @@
 #include "headers/nn.h"
 #include "headers/globals.h"
 #include "headers/data.h"
-
-struct layer input_layer;
-struct layer hidden_layer1;
-struct layer hidden_layer2;
-struct layer output_layer;
+#include "headers/token.h"
 
 int **convolution(int *input, int **matrix) {
     int **output;
@@ -64,16 +60,104 @@ struct layer init_layer(char * name, int previous_size, int current_size) {
 }
 
 void free_layer(struct layer l) {
-        if (l.weights)
-            free(l.weights);
-        if (l.biases)
-            free(l.biases);
-        if (l.output)
-            free(l.output);
-        if (l.delta)
-            free(l.delta);
-        if (l.z)
-            free(l.z);
+    if (l.weights)
+        free(l.weights);
+    if (l.biases)
+        free(l.biases);
+    if (l.output)
+        free(l.output);
+    if (l.delta)
+        free(l.delta);
+    if (l.z)
+        free(l.z);
+}
+
+struct multi_head_attention_layer *init_multi_head_attention_layer(int masked) { //create Wq, Wk, Wv, Wo, Q, K, V, gamma and beta
+    struct multi_head_attention_layer *res = malloc(sizeof(struct multi_head_attention_layer));
+    int dk = dmodel/4; //4 heads
+    double limit = sqrt(6.0 / (dmodel + dk));
+    
+    res->masked = masked;
+    res->Wq = malloc(dmodel * sizeof(double *));
+    res->Wk = malloc(dmodel * sizeof(double *));
+    res->Wv = malloc(dmodel * sizeof(double *));
+    res->Wo = malloc(dmodel * sizeof(double *));
+
+    res->Q = NULL;
+    res->K = NULL; 
+    res->V = NULL;
+
+    res->gamma = malloc(dmodel * sizeof(double));
+    res->beta = malloc(dmodel * sizeof(double));
+
+    for (int i = 0; i < dmodel; i++) {
+        (res->Wq)[i] = malloc(dmodel * sizeof(double));
+        (res->Wk)[i] = malloc(dmodel * sizeof(double));
+        (res->Wv)[i] = malloc(dmodel * sizeof(double));
+        (res->Wo)[i] = malloc(dmodel * sizeof(double));
+        (res->gamma)[i] = 1.0;
+        (res->beta)[i]  = 0.0;
+        for (int j = 0; j < dmodel; j++) {
+            ((res->Wq)[i])[j] = rand_uniform_token(-limit, limit);
+            ((res->Wk)[i])[j] = rand_uniform_token(-limit, limit);
+            ((res->Wv)[i])[j] = rand_uniform_token(-limit, limit);
+            ((res->Wo)[i])[j] = rand_uniform_token(-limit, limit);
+        }
+    }
+    return res;
+}
+
+void free_multi_head_attention_layer(struct multi_head_attention_layer *l) {
+    if (!l) return;
+    if (l->Wq) {
+        for (int i = 0; i < dmodel; i++) {
+            free((l->Wq)[i]);
+        }
+    }
+    if (l->Wk) {
+        for (int i = 0; i < dmodel; i++) {
+            free((l->Wk)[i]);
+        }
+    }
+    if (l->Wv) {
+        for (int i = 0; i < dmodel; i++) {
+            free((l->Wv)[i]);
+        }
+    }
+    if (l->Wo) {
+        for (int i = 0; i < dmodel; i++) {
+            free((l->Wo)[i]);
+        }
+    }
+    free(l->gamma);
+    free(l->beta);
+}
+
+
+struct feed_forward_layer *init_feed_forward_layer() {
+    struct feed_forward_layer *res = malloc(sizeof(struct feed_forward_layer));
+    
+    res->input_layer = init_layer("input", dmodel, dmodel*4);
+    res->hidden_layer = init_layer("hidden", dmodel*4, dmodel);
+    res->output_layer = init_layer("output", dmodel, dmodel);
+
+    res->gamma = malloc(dmodel * sizeof(double));
+    res->beta = malloc(dmodel * sizeof(double));
+
+    for (int i = 0; i < dmodel; i++) {
+        (res->gamma)[i] = 1.0;
+        (res->beta)[i]  = 0.0;
+    }
+    return res;
+}
+
+void free_feed_forward_layer(struct feed_forward_layer *l) {
+    if (!l) return;
+    free_layer(l->input_layer);
+    free_layer(l->hidden_layer);
+    free_layer(l->output_layer);
+    free(l->gamma);
+    free(l->beta);
 }
 
 void print_outputs(struct layer l) {
@@ -83,14 +167,11 @@ void print_outputs(struct layer l) {
     }
 }
 
-void put_in_output_matrix(double *input, int W, int H) {
-
+void put_in_output_matrix(double *input, int W, struct layer input_layer) {
     int c = 0;
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            (input_layer.output)[c] = input[y*W + x];
-            c++;
-        }
+    for (int x = 0; x < W; x++) {
+        (input_layer.output)[c] = input[x];
+        c++;
     }
 }
 
@@ -128,6 +209,104 @@ void soft_max(struct layer *l) {
     for (int i = 0; i < cs; i++) {
         l->output[i] = exp(l->output[i] - max) / sum;
     }
+}
+
+void soft_max_matrix(double **m, int h, int w) {
+    double max = m[0][0];
+    for (int i = 0; i < h; i++) {
+        for (int j = 0; j < w; j++) {
+            if (max < m[i][j]) {
+                max = m[i][j];
+            }
+        }
+    }
+    double sum = 0;
+    for (int i = 0; i < h; i++) {
+        for (int j = 0; j < w; j++) {
+            sum += exp(m[i][j] - max);
+        }
+    }
+    for (int i = 0; i < h; i++) {
+        for (int j = 0; j < w; j++) {
+            m[i][j] = exp(m[i][j] - max) / sum;
+        }
+    }
+}
+
+double **attention(int seq_enc, int seq_dec, int mask, double **Q, double **K, double **V, double **Wo) {
+    int dk = dmodel/4;
+    double **temp_sm;
+    double **temp_head;
+    double **temp_res = malloc(seq_dec * sizeof(double *));
+    for (int i = 0; i < seq_dec; i++) {
+        temp_res[i] = malloc(dmodel * sizeof(double));
+    }
+    double **res;
+    for (int i = 0; i < 4; i++) {
+        temp_sm = matrix_mul_sub(Q, 0, seq_dec, dk*i, dk*(i+1),
+            K, dk*i, dk*(i+1), 0, seq_enc,
+            mask
+        );
+        soft_max_matrix(temp_sm, seq_dec, seq_enc);
+        temp_head = matrix_mul(temp_sm, V, seq_dec, seq_enc, dk);
+        free_matrix(temp_sm, seq_dec);
+        for (int i2 = 0; i2 < seq_dec; i2++) {
+            for (int j = 0; j < dk; j++) {
+                temp_res[i2][dk*i + j] = temp_head[i2][j];
+            }
+        }
+        free_matrix(temp_head, seq_dec);
+    }
+    res = matrix_mul(temp_res, Wo, seq_dec, dmodel, dmodel);
+    free_matrix(temp_res, seq_dec);
+    return res;
+}
+
+double **add_and_normalize(double **m1, double **m2, int h, int w, int seq, double *gamma_matrix, double *beta_matrix) {
+    double **y = matrix_sum(m1, m2, seq, dmodel);
+    double **out = malloc(seq * sizeof(double *));
+    for (int i = 0; i < seq; i++) {
+        out[i] = malloc(dmodel * sizeof(double));
+        for (int j = 0; j < dmodel; j++) {
+            out[i][j] = 0;
+        }
+    }
+
+    for (int i = 0; i < seq; i++) {
+        double mean = mean_row(y[i], dmodel);
+        double var = variance_row(y[i], dmodel, mean);
+
+        for (int j = 0; j < dmodel; j++) {
+            double norm = (y[i][j] - mean) / sqrt(var + 1e-5);
+            out[i][j] = gamma_matrix[j] * norm + beta_matrix[j];
+        }
+    }
+    free_matrix(y, seq);
+    return out;
+}
+
+double** attention_add_and_normalize(struct multi_head_attention_layer *l, int seq_enc,
+    int seq_dec, double **output_enc, double **output_dec) {
+    
+    l->Q = matrix_mul(output_dec, l->Wq, seq_dec, dmodel, dmodel);
+    l->K = matrix_mul_transpose(output_enc, l->Wk, seq_enc, dmodel, dmodel); 
+    l->V = matrix_mul(output_enc, l->Wv, seq_enc, dmodel, dmodel);
+    
+    double **MH_A = attention(seq_enc, seq_dec, l->masked, l->Q, l->K, l->V, l->Wo);
+
+    double** res = add_and_normalize(MH_A, output_dec, seq_dec, dmodel, seq_dec, 
+    l->gamma, l->beta);
+                
+    return res;
+}
+
+double** feed_forward_add_and_normalize(struct feed_forward_layer *l, int seq, double **input) {
+    
+    double **after_ff = feed_forward(input, seq, l->input_layer, l->hidden_layer, l->output_layer);
+
+    double** res = add_and_normalize(input, after_ff, seq, dmodel, seq, l->gamma, l->beta);
+                
+    return res;
 }
 
 void sigmoid(struct layer *l) {
@@ -206,18 +385,20 @@ void update_SGD(struct layer *curr, struct layer *prev) {
     }
 }
 
-void browse(double *input) {
+double **feed_forward(double **input, int seq, struct layer input_layer, struct layer hidden_layer, struct layer output_layer) {
+    double **out = malloc(seq * sizeof(double *));
+    for (int i = 0; i < seq; i++) {
+        out[i] = malloc(dmodel * sizeof(double));
+        for (int j = 0; j < seq; j++) {
+            out[i][j] = input[i][j];
+        }
+        put_in_output_matrix(out[i], dmodel, input_layer);
 
-    put_in_output_matrix(input, 28, 28);
-
-    forward(&input_layer, &hidden_layer1);
-    relu(&hidden_layer1);
-    forward(&hidden_layer1, &hidden_layer2);
-    relu(&hidden_layer2);
-    forward(&hidden_layer2, &output_layer);
-    soft_max(&output_layer);
-
-
+        forward(&input_layer, &hidden_layer);
+        relu(&hidden_layer);
+        forward(&hidden_layer, &output_layer);
+    }
+    /*
     double p = output_layer.output[expected];
     if (p < 1e-15) p = 1e-15;
     loss = -log(p);
@@ -234,13 +415,13 @@ void browse(double *input) {
     }
     output_layer.delta[expected] -= 1.0; //cross entropy
 
-    backward(&output_layer, &hidden_layer2);
-    backward(&hidden_layer2, &hidden_layer1);
+    backward(&output_layer, &hidden_layer1);
     backward(&hidden_layer1, &input_layer);
 
-    update_SGD(&output_layer,  &hidden_layer2);
-    update_SGD(&hidden_layer2, &hidden_layer1);
+    update_SGD(&output_layer, &hidden_layer1);
     update_SGD(&hidden_layer1, &input_layer);
 
     update_learning_coeff();
+    */
+   return out;
 }
