@@ -15,7 +15,7 @@ double potential_encoding(int pos, int i);
 double *gen_pos_array(int pos, int size);
 int *get_ids_array(char *filename);
 char **gen_tokens_array(char *filename);
-token **str_to_tokens(char *text, int *out_n);
+token **str_to_tokens(char *text, int *out_n, char mode);
 void init_tokens();
 void free_tokens(token **toks, int n);
 void free_vocab();

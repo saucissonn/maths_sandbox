@@ -4,8 +4,20 @@
 #include <math.h>
 
 double **matrix_mul(double **A, double **B, int n, int m, int p);
+double **matrix_mul_AT_B(double **A, double **B, int n, int m, int p);
+double **matrix_mul_A_BT(double **A, double **B, int n, int m, int p);
 double **matrix_mul_transpose(double **A, double **B, int n, int m, int p);
 double **matrix_mul_sub(
+    double **A, int ai_start, int ai_end, int aj_start, int aj_end,
+    double **B, int bi_start, int bi_end, int bj_start, int bj_end,
+    int causal_mask
+);
+double **matrix_mul_sub_AT(
+    double **A, int ai_start, int ai_end, int aj_start, int aj_end,
+    double **B, int bi_start, int bi_end, int bj_start, int bj_end,
+    int causal_mask
+);
+double **matrix_mul_sub_BT(
     double **A, int ai_start, int ai_end, int aj_start, int aj_end,
     double **B, int bi_start, int bi_end, int bj_start, int bj_end,
     int causal_mask

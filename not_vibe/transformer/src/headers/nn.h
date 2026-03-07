@@ -16,28 +16,43 @@ struct layer {
     double *biases;    //output_size
     double *output;    //activations
     double *delta;     //gradients
+    double *sum_delta; //sum of gradients
     double *z;
+};
+
+struct add_and_normalize_layer {
+    double **Z; //input + output_layer->z
+    double *gamma;
+    double *beta;
+    double **Z_normalized;
 };
 
 struct multi_head_attention_layer {
     int masked;
-    double **Wq;
+    int nb_heads;
+    double **Xenc; //input encoder
+    double **Xdec; //input decoder
+    double **dXenc; //grad input encoder
+    double **dXdec; //grad input decoder
+    double **Wq;   
     double **Wk;
     double **Wv;
     double **Wo;
     double **Q;
     double **K;
     double **V;
-    double *gamma;
-    double *beta;
+    double ***S; //before softmax
+    double ***A; //after softmax
+    double **concat_heads;
+    struct add_and_normalize_layer *norm;
 };
 
 struct feed_forward_layer {
     struct layer input_layer;
     struct layer hidden_layer;
     struct layer output_layer;
-    double *gamma;
-    double *beta;
+    struct add_and_normalize_layer *norm;
+    double **dx;
 };
 
 void relu(struct layer *l);
@@ -46,13 +61,15 @@ void free_layer(struct layer l);
 struct multi_head_attention_layer *init_multi_head_attention_layer(int masked);
 void free_multi_head_attention_layer(struct multi_head_attention_layer *l);
 struct feed_forward_layer *init_feed_forward_layer();
-void free_feed_forward_layer(struct feed_forward_layer *l);
+void free_feed_forward_layer(struct feed_forward_layer *l, int seq);
+void init_linear();
+double **linear(double **input, int seq);
 
 void soft_max(struct layer *l);
-void soft_max_matrix(double **m, int h, int w);
-double **attention(int seq_enc, int seq_dec, int mask, double **Q, double **K, double **V, double **Wo);
+double **soft_max_matrix(double **m, int h, int w);
+double **attention(int seq_enc, int seq_dec, struct multi_head_attention_layer *l);
 double **add_and_normalize(double **m1, double **m2, int h, int w, int seq, double *gamma_matrix, double *beta_matrix);
-double** attention_add_and_normalize(struct multi_head_attention_layer *l, int seq_enc,
+void attention_add_and_normalize(struct multi_head_attention_layer *l, int seq_enc,
     int seq_dec, double **output_enc, double **output_dec);
 double** feed_forward_add_and_normalize(struct feed_forward_layer *l, int seq, double **input);
 void sigmoid(struct layer *l);
@@ -64,7 +81,13 @@ void update_SGD(struct layer *curr, struct layer *prev);
 void print_outputs(struct layer l);
 int index_max_output(struct layer l);
 
-double **feed_forward(double **input, int seq, struct layer input_layer, struct layer hidden_layer, struct layer output_layer);
+void feed_forward(double **input, int seq, struct feed_forward_layer *l);
 void check(char *path, int expected);
+double cross_entropy(double **input, double **grad, int seq);
+double **backward_linear(double **input, double **grad, int seq);
+void backward_feed_forward_add_and_normalize(struct feed_forward_layer *layer, double **grad, int seq);
+void backward_attention_add_and_normalize(
+    struct multi_head_attention_layer *layer, double **grad,
+    int seq_enc, int seq_dec);
 
 #endif

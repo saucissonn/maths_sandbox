@@ -17,6 +17,17 @@ void print_matrix(double **input, int height, int width) {
     }
 }
 
+void printf_time_diff(struct timespec start, struct timespec end) {
+    clock_gettime(CLOCK_MONOTONIC, &end);
+
+    long seconds = end.tv_sec - start.tv_sec;
+    long nanoseconds = end.tv_nsec - start.tv_nsec;
+
+    double ms = seconds * 1000.0 + nanoseconds / 1e6;
+
+    printf("%.3f ms\n", ms);
+}
+
 static int write_u32(FILE *f, uint32_t v){ return fwrite(&v, sizeof(v), 1, f) == 1; }
 static int write_u64(FILE *f, uint64_t v){ return fwrite(&v, sizeof(v), 1, f) == 1; }
 
