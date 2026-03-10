@@ -51,7 +51,7 @@ char **gen_tokens_array(char *filename) {
     char **tokens = malloc(vocab_size * sizeof(char *));
     int size = 0;
 
-    char line[1024];
+    char line[10000];
 
     while (fgets(line, sizeof(line), file)) {
         char *p = strchr(line, ':');

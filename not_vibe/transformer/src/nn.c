@@ -7,6 +7,12 @@
 #include "headers/data.h"
 #include "headers/token.h"
 
+static double clampd(double x, double lo, double hi) {
+    if (x < lo) return lo;
+    if (x > hi) return hi;
+    return x;
+}
+
 int **convolution(int *input, int **matrix) {
     int **output;
     (void)input;
@@ -17,9 +23,8 @@ int **convolution(int *input, int **matrix) {
 void relu(struct layer *l) {
     int cs = l->current_size;
     for (int i = 0; i < cs; i++) {
-        if (l->output[i] < 0) {
-            l->output[i] = 0;
-        }
+        if (l->output[i] < 0) l->output[i] = 0;
+        if (l->output[i] > 1e6) l->output[i] = 1e6;
     }
 }
 
@@ -27,8 +32,10 @@ double rand_uniform() {
     return 2.0 * rand() / (double)RAND_MAX - 1.0;
 }
 
-struct add_and_normalize_layer *init_add_and_normalize_layer() {
+struct add_and_normalize_layer *init_add_and_normalize_layer(int seq_enc, int seq_dec) {
     struct add_and_normalize_layer *res = malloc(sizeof(struct add_and_normalize_layer));
+    res->seq_enc = seq_enc;
+    res->seq_dec = seq_dec;
     res->Z = NULL;
     res->Z_normalized = NULL;
 
@@ -46,6 +53,8 @@ void free_add_and_normalize_layer(struct add_and_normalize_layer *l) {
     if (!l) return;
     free(l->gamma);
     free(l->beta);
+    free_matrix(l->Z, l->seq_dec);
+    free_matrix(l->Z_normalized, l->seq_dec);
 }
 
 struct layer init_layer(char * name, int previous_size, int current_size) {
@@ -109,15 +118,15 @@ struct multi_head_attention_layer *init_multi_head_attention_layer(int masked) {
     res->Q = NULL;
     res->K = NULL; 
     res->V = NULL;
-    res->A = malloc(dmodel * sizeof(double **));
-    res->S = malloc(dmodel * sizeof(double **));
+    res->A = malloc(res->nb_heads * sizeof(double **));
+    res->S = malloc(res->nb_heads * sizeof(double **));
     res->concat_heads = malloc(dmodel * sizeof(double *));
     for (int i = 0; i < res->nb_heads; i++) { //4 heads
         (res->A)[i] = NULL;
         (res->S)[i] = NULL;
     }
 
-    res->norm = init_add_and_normalize_layer();
+    res->norm = init_add_and_normalize_layer(0, 0);
 
     for (int i = 0; i < dmodel; i++) {
         (res->Wq)[i] = malloc(dmodel * sizeof(double));
@@ -168,7 +177,7 @@ struct feed_forward_layer *init_feed_forward_layer() {
     res->hidden_layer = init_layer("hidden", dmodel*4, dmodel);
     res->output_layer = init_layer("output", dmodel, dmodel);
 
-    res->norm = init_add_and_normalize_layer();
+    res->norm = init_add_and_normalize_layer(0, 0);
 
     res->dx = NULL;
 
@@ -267,29 +276,59 @@ void soft_max(struct layer *l) {
         sum += exp(l->output[i] - max);
     }
     for (int i = 0; i < cs; i++) {
-        l->output[i] = exp(l->output[i] - max) / sum;
+        double x = clampd(l->output[i] - max, -50.0, 50.0);
+        l->output[i] = exp(x) / sum;
     }
 }
 
-double **soft_max_matrix(double **m, int h, int w) {
+double **soft_max_matrix(double **m, int h, int w, int mask) {
     double **res = malloc(h * sizeof(double *));
+    int dk = dmodel / 4;
+    double inv = 1.0 / sqrt((double)dk);
+
+    if (!res) return NULL;
+
     for (int i = 0; i < h; i++) {
         res[i] = malloc(w * sizeof(double));
+        if (!res[i]) return NULL;
 
-        double max = m[i][0];
-        for (int j = 1; j < w; j++) {
-            if (m[i][j] > max) max = m[i][j];
+        double max = -1e9;
+
+        for (int j = 0; j < w; j++) {
+            if (mask && j > i) continue;
+            double score = m[i][j] * inv;
+            if (score > max) max = score;
+        }
+
+        if (max == -1e9) {
+            for (int j = 0; j < w; j++) res[i][j] = 0.0;
+            continue;
         }
 
         double sum = 0.0;
-        for (int j = 0; j < w; j++) {
-            sum += exp(m[i][j] - max);
-        }
 
         for (int j = 0; j < w; j++) {
-            res[i][j] = exp(m[i][j] - max) / sum;
+            if (mask && j > i) {
+                res[i][j] = 0.0;
+                continue;
+            }
+
+            double score = m[i][j] * inv;
+            double x = clampd(score - max, -50.0, 50.0);
+            double e = exp(x);
+            res[i][j] = e;
+            sum += e;
+        }
+
+        if (sum < 1e-12) sum = 1e-12;
+
+        for (int j = 0; j < w; j++) {
+            if (!(mask && j > i)) {
+                res[i][j] /= sum;
+            }
         }
     }
+
     return res;
 }
 
@@ -297,6 +336,8 @@ double **attention(int seq_enc, int seq_dec, struct multi_head_attention_layer *
     int dk = dmodel/l->nb_heads;
     double **temp_head;
 
+    l->norm->seq_enc = seq_enc;
+    l->norm->seq_dec = seq_dec;
     l->concat_heads = malloc(seq_dec * sizeof(double *));
     l->Xdec = malloc(seq_dec * sizeof(double *));
     for (int i = 0; i < seq_dec; i++) {
@@ -315,7 +356,7 @@ double **attention(int seq_enc, int seq_dec, struct multi_head_attention_layer *
             l->K, dk*i, dk*(i+1), 0, seq_enc,
             l->masked
         );
-        (l->A)[i] = soft_max_matrix((l->S)[i], seq_dec, seq_enc);
+        (l->A)[i] = soft_max_matrix((l->S)[i], seq_dec, seq_enc, l->masked);
         temp_head = matrix_mul((l->A)[i], l->V, seq_dec, seq_enc, dk);
         for (int i2 = 0; i2 < seq_dec; i2++) {
             for (int j = 0; j < dk; j++) {
@@ -344,7 +385,10 @@ double **add_and_normalize(double **m1, double **m2, int h, int w, int seq, doub
         double var = variance_row(y[i], dmodel, mean);
 
         for (int j = 0; j < dmodel; j++) {
-            double norm = (y[i][j] - mean) / sqrt(var + 1e-5);
+            var = clampd(var, 1e-5, 5);
+            double invstd = 1.0 / sqrt(var);
+            double norm = (y[i][j] - mean) * invstd;
+            norm = clampd(norm, -10.0, 10.0);
             out[i][j] = gamma_matrix[j] * norm + beta_matrix[j];
         }
     }
@@ -354,6 +398,12 @@ double **add_and_normalize(double **m1, double **m2, int h, int w, int seq, doub
 
 void attention_add_and_normalize(struct multi_head_attention_layer *l, int seq_enc,
     int seq_dec, double **output_enc, double **output_dec) {
+
+    free_matrix(l->Q, l->norm->seq_dec);
+    free_matrix(l->K, l->norm->seq_enc);
+    free_matrix(l->V, l->norm->seq_enc);
+    free_matrix(l->norm->Z, l->norm->seq_dec);
+    free_matrix(l->norm->Z_normalized, l->norm->seq_dec);
 
     l->Q = matrix_mul(output_dec, l->Wq, seq_dec, dmodel, dmodel);
     l->K = matrix_mul_transpose(output_enc, l->Wk, seq_enc, dmodel, dmodel); 
@@ -377,20 +427,10 @@ void attention_add_and_normalize(struct multi_head_attention_layer *l, int seq_e
     l->norm->gamma, l->norm->beta);
 }
 
-double** feed_forward_add_and_normalize(struct feed_forward_layer *l, int seq, double **input) {
+void feed_forward_add_and_normalize(struct feed_forward_layer *l, int seq, double **input) {
     
     feed_forward(input, seq, l);
-
-    double** res = add_and_normalize(input, l->norm->Z, seq, dmodel, seq, l->norm->gamma, l->norm->beta);
-    l->norm->Z_normalized = malloc(seq * sizeof(double *));
-    for (int i = 0; i < seq; i++) {
-        l->norm->Z_normalized[i] = malloc(dmodel * sizeof(double));
-        for (int j = 0; j < dmodel; j++) {
-            l->norm->Z_normalized[i][j] = res[i][j];
-        }
-    }
-                
-    return res;
+    l->norm->Z_normalized = add_and_normalize(input, l->norm->Z, seq, dmodel, seq, l->norm->gamma, l->norm->beta);
 }
 
 void sigmoid(struct layer *l) {
@@ -409,6 +449,7 @@ void forward(struct layer *prev, struct layer *curr) {
         for (int j = 0; j < ps; j++) {
             sum += prev->output[j] * curr->weights[i*ps + j];
         }
+        sum = clampd(sum, -100, 100);
         curr->z[i] = sum;
         curr->output[i] = sum;
     }
@@ -464,21 +505,18 @@ void update_SGD(struct layer *curr, struct layer *prev) {
 
             //L2 regularization
             curr->weights[idx] -= learning_coeff * (grad + lambda * curr->weights[idx]);
+            curr->weights[idx] = clampd(curr->weights[idx], -5.0, 5.0);
         }
 
         curr->biases[i] -= learning_coeff * d;
+        curr->biases[i] = clampd(curr->biases[i], -5.0, 5.0);
     }
 }
 
 void feed_forward(double **input, int seq, struct feed_forward_layer *l) {
-    double **out = malloc(seq * sizeof(double *));
     l->norm->Z = malloc(seq * sizeof(double *));
     for (int i = 0; i < seq; i++) {
-        out[i] = malloc(dmodel * sizeof(double));
-        for (int j = 0; j < dmodel; j++) {
-            out[i][j] = input[i][j];
-        }
-        put_in_output_matrix(out[i], dmodel, l->input_layer);
+        put_in_output_matrix(input[i], dmodel, l->input_layer);
 
         forward(&l->input_layer, &l->hidden_layer);
         relu(&l->hidden_layer);
@@ -500,7 +538,7 @@ double logsumexp(double *z, int n) {
     for (int i = 0; i < n; i++) 
         s += exp(z[i] - m);
 
-    return m + log(s);
+    return m + log(s + 1e-9);
 }
 
 double cross_entropy(double **input, double **grad, int seq) {
@@ -513,7 +551,8 @@ double cross_entropy(double **input, double **grad, int seq) {
         loss += -(input[t][y] - lse);
 
         for (int j = 0; j < vocab_size; j++) {
-            double p = exp(input[t][j] - lse);
+            double x = clampd(input[t][j] - lse, -50.0, 50.0);
+            double p = exp(x);
             grad[t][j] = p;
         }
         grad[t][y] -= 1;
@@ -526,6 +565,8 @@ double cross_entropy(double **input, double **grad, int seq) {
             grad[t][j] /= (double)seq;
         }
     }
+
+    loss = clampd(loss, 0, 15);
 
     return loss;
 }
@@ -557,12 +598,14 @@ void sgd_update_rect(double **W, double *b, double **dW, double *db,
 }
 
 void sgd_update_row(double *W, double *b, double *dW, double *db) {
+    double clip = 1.0;
     for (int i = 0; i < dmodel; i++) {
-        W[i] -= learning_coeff * dW[i];
-        b[i] -= learning_coeff * db[i];
+        double gw = clampd(dW[i], -clip, clip);
+        double gb = clampd(db[i], -clip, clip);
+        W[i] -= learning_coeff * gw;
+        b[i] -= learning_coeff * gb;
     }
 }
-
 double **backward_linear(double **input, double **grad, int seq) {
     double **dW = matrix_mul_AT_B(input, grad, seq, dmodel, vocab_size);
     double *db = calloc(vocab_size, sizeof(double));
@@ -588,7 +631,7 @@ double **backward_add_and_normalize(struct add_and_normalize_layer *layer, doubl
 
     for (int i = 0; i < seq; i++) {
         for (int j = 0; j < dmodel; j++) {
-            dgamma[j] += grad[i][j] * layer->Z[i][j];
+            dgamma[j] += grad[i][j] * layer->Z_normalized[i][j];
             dbeta[j] += grad[i][j];
         }
     }
@@ -616,10 +659,12 @@ double **backward_add_and_normalize(struct add_and_normalize_layer *layer, doubl
         free(temp);
         dZ[i] = malloc(dmodel * sizeof(double));
         double mu = mean_row(layer->Z[i], dmodel);
-        double invstd = 1.0 / sqrt(variance_row(layer->Z[i], dmodel, mu) + 1e-6);
+        double var = variance_row(layer->Z[i], dmodel, mu);
+        var = fmax(var, 1e-5);
+        double invstd = 1.0 / sqrt(var);
 
         for (int j = 0; j < dmodel; j++) {
-            dZ[i][j] = invstd * (dZ_normalized[i][j] - m1[i] - layer->Z_normalized[i][j] * m2[i]);
+            dZ[i][j] = clampd(invstd * (dZ_normalized[i][j] - m1[i] - layer->Z_normalized[i][j] * m2[i]), -5.0, 5.0);
         }
     }
 
@@ -652,12 +697,15 @@ void backward_feed_forward_add_and_normalize(struct feed_forward_layer *layer, d
         backward(&layer->output_layer, &layer->hidden_layer);
         backward(&layer->hidden_layer, &layer->input_layer);
         for (int j = 0; j < dmodel; j++) {
-            layer->dx[i][j] = layer->input_layer.delta[j] + dZ[i][j];
+            layer->dx[i][j] = clampd(layer->input_layer.delta[j] + dZ[i][j], -5.0, 5.0);
         }
     }
     update_SGD(&layer->output_layer, &layer->hidden_layer);
     update_SGD(&layer->hidden_layer, &layer->input_layer);
     free_matrix(dZ, seq);
+    free_matrix(grad, seq);
+    layer->norm->seq_dec = seq;
+    layer->norm->seq_enc = seq;
 }
 
 double **softmax_backward(double **a, double **da, int seq_enc, int seq_dec, int heads) {
@@ -673,7 +721,7 @@ double **softmax_backward(double **a, double **da, int seq_enc, int seq_dec, int
         }
 
         for (int j = 0; j < seq_enc; j++) {
-            ds[i][j] = a[i][j] * (da[i][j] - dot) * invsdk;
+            ds[i][j] = clampd(a[i][j] * (da[i][j] - dot) * invsdk, -5.0, 5.0);
         }
     }
     return ds;
@@ -682,28 +730,31 @@ double **softmax_backward(double **a, double **da, int seq_enc, int seq_dec, int
 void sgd_update_sub(double **m, double **grad, int i_start, int i_end,
     int j_start, int j_end
 ) {
-    double clip = 1.0;
+    double clip = 5.0;
 
     for (int i = i_start; i < i_end; i++) {
         for (int j = j_start; j < j_end; j++) {
             double g = grad[i][j];
 
-            if (g > clip) g = clip;
-            if (g < -clip) g = -clip;
-
             m[i][j] -= learning_coeff * g;
+
+            m[i][j] = clampd(m[i][j], -5.0, 5.0);
+
         }
     }
 }
 
 void backward_attention_add_and_normalize(
     struct multi_head_attention_layer *layer, double **grad,
-    int seq_enc, int seq_dec) {
+    int seq_enc, int seq_dec
+) {
 
     int dk = dmodel/layer->nb_heads;
     double **dZ = backward_add_and_normalize(layer->norm, grad, seq_dec);
+    free_matrix(grad, seq_dec);
     double **dH = matrix_mul_A_BT(dZ, layer->Wo, seq_dec, dmodel, dmodel);
-    double **dWo = matrix_mul_AT_B(layer->concat_heads, dZ, seq_dec, dmodel, seq_dec);
+    double **dWo = matrix_mul_AT_B(layer->concat_heads, dZ, seq_dec, dmodel, dmodel);
+    free_matrix(dZ, seq_dec);
     layer->dXenc = malloc(seq_enc * sizeof(double *));
     layer->dXdec = malloc(seq_dec * sizeof(double *));
     for (int i = 0; i < seq_enc; i++) {
@@ -718,7 +769,7 @@ void backward_attention_add_and_normalize(
         double **dVi = matrix_mul_sub_AT(layer->A[i], 0, seq_dec, 0, seq_enc,
                                         dH, 0, seq_dec, dk*i, dk*(i+1), 0
         );
-
+        
         double **dAi = matrix_mul_sub_BT(dH, 0, seq_dec, dk*i, dk*(i+1),
                                         layer->V, 0, seq_enc, dk*i, dk*(i+1), 0
         );
@@ -760,22 +811,39 @@ void backward_attention_add_and_normalize(
         for (int i = 0; i < seq_dec; i++) {
             for (int j = 0; j < dmodel; j++) {
                 layer->dXdec[i][j] += temp_dec[i][j];
+                layer->dXdec[i][j] = clampd(layer->dXdec[i][j], -10.0, 10.0);
             }
         }
         
         for (int i = 0; i < seq_enc; i++) {
             for (int j = 0; j < dmodel; j++) {
                 layer->dXenc[i][j] += temp_enc1[i][j] + temp_enc2[i][j];
+                layer->dXenc[i][j] = clampd(layer->dXenc[i][j], -10.0, 10.0);
             }
         }
 
         sgd_update_sub(layer->Wq, dWqi, 0, dmodel, dk*i, dk*(i+1));
         sgd_update_sub(layer->Wk, dWki, 0, dmodel, dk*i, dk*(i+1));
         sgd_update_sub(layer->Wv, dWvi, 0, dmodel, dk*i, dk*(i+1));
+
+        //printf("ok\n");
+        free_matrix(dVi, seq_enc);
+        free_matrix(dAi, seq_dec);
+        free_matrix(dSi, seq_dec);
+        free_matrix(dQi, seq_dec);
+        free_matrix(dKi, seq_enc);
+        free_matrix(dWqi, dmodel);
+        free_matrix(dWki, dmodel);
+        free_matrix(dWvi, dmodel);
+        free_matrix(temp_dec, seq_dec);
+        free_matrix(temp_enc1, seq_enc);
+        free_matrix(temp_enc2, seq_enc);
     }
 
     sgd_update_sub(layer->Wo, dWo, 0, dmodel, 0, dmodel);
-
+    free_matrix(layer->Xenc, seq_enc);
+    free_matrix(layer->Xdec, seq_dec);
+    free_matrix(dH, seq_dec);
+    free_matrix(dWo, dmodel);
     free_matrix(layer->concat_heads, seq_dec);
-
 }

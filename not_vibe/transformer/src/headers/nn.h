@@ -21,6 +21,8 @@ struct layer {
 };
 
 struct add_and_normalize_layer {
+    int seq_enc;
+    int seq_dec;
     double **Z; //input + output_layer->z
     double *gamma;
     double *beta;
@@ -66,12 +68,12 @@ void init_linear();
 double **linear(double **input, int seq);
 
 void soft_max(struct layer *l);
-double **soft_max_matrix(double **m, int h, int w);
+double **soft_max_matrix(double **m, int h, int w, int mask);
 double **attention(int seq_enc, int seq_dec, struct multi_head_attention_layer *l);
 double **add_and_normalize(double **m1, double **m2, int h, int w, int seq, double *gamma_matrix, double *beta_matrix);
 void attention_add_and_normalize(struct multi_head_attention_layer *l, int seq_enc,
     int seq_dec, double **output_enc, double **output_dec);
-double** feed_forward_add_and_normalize(struct feed_forward_layer *l, int seq, double **input);
+void feed_forward_add_and_normalize(struct feed_forward_layer *l, int seq, double **input);
 void sigmoid(struct layer *l);
 
 void forward(struct layer *prev, struct layer *curr);

@@ -23,6 +23,15 @@ int main(void)
     struct feed_forward_layer *feed_forward_layer_decoder = init_feed_forward_layer();
     init_linear();
 
+
+    dWvocab_embed_input = malloc(vocab_size * sizeof(double *));
+    dWvocab_embed_answer = malloc(vocab_size * sizeof(double *));
+
+    for (int i = 0; i < vocab_size; i++) {
+        dWvocab_embed_input[i] = calloc(dmodel, sizeof(double));
+        dWvocab_embed_answer[i] = calloc(dmodel, sizeof(double));
+    }
+
     double **final_output;
     double **grad_first;
     double **grad_linear;
@@ -38,6 +47,7 @@ int main(void)
         seq_decoder = 0;
 
         select_random_file_and_answer(&seq_encoder, &seq_decoder);
+        printf("encoder: %d, decoder: %d\n", seq_encoder, seq_decoder);
         // start encoder
         attention_add_and_normalize(
             multi_head_attention_layer_encoder, seq_encoder, seq_encoder,
@@ -93,7 +103,9 @@ int main(void)
         );
 
         for (int i = 0; i < vocab_size; i++) {
-            dWvocab_embed_answer[i] = calloc(dmodel, sizeof(double));
+            for (int j = 0; j < dmodel; j++) {
+                dWvocab_embed_answer[i][j] = 0.0;
+            }
         }
         
         for (int i = 0; i < seq_decoder; i++) {
@@ -109,7 +121,7 @@ int main(void)
                 Wvocab_embed_answer[tok][j] -= learning_coeff * dWvocab_embed_answer[tok][j];
             }
         }
-
+        
         backward_feed_forward_add_and_normalize(
             feed_forward_layer_encoder, multi_head_attention_layer_decoder2->dXenc, seq_encoder
         );
@@ -123,7 +135,9 @@ int main(void)
         //print_matrix(multi_head_attention_layer_encoder->dXenc, seq_encoder, dmodel);
 
         for (int i = 0; i < vocab_size; i++) {
-            dWvocab_embed_input[i] = calloc(dmodel, sizeof(double));
+            for (int j = 0; j < dmodel; j++) {
+                dWvocab_embed_input[i][j] = 0.0;
+            }
         }
         
         for (int i = 0; i < seq_encoder; i++) {
@@ -141,25 +155,25 @@ int main(void)
         }
 
         printf_time_diff(start, end);
-
-}
     //print_matrix(final_output, seq_decoder, vocab_size);
+
+    free_matrix(final_output, seq_decoder);
+    free_matrix(grad_first, seq_decoder);
+    
+    }
+
+    free_matrix(input_matrix_encoder, seq_encoder); 
+    free_matrix(input_matrix_decoder, seq_decoder);
+
+    free_matrix(W_last, dmodel);
+    free(expected_matrix);
+    free(b_last);
+    free_vocab();
     free_multi_head_attention_layer(multi_head_attention_layer_encoder);
     free_feed_forward_layer(feed_forward_layer_encoder, seq_encoder);
     free_multi_head_attention_layer(multi_head_attention_layer_decoder1);
     free_multi_head_attention_layer(multi_head_attention_layer_decoder2);
     free_feed_forward_layer(feed_forward_layer_decoder, seq_decoder);
-
-    free_matrix(input_matrix_encoder, seq_encoder); 
-    free_matrix(input_matrix_decoder, seq_decoder);
-    free_matrix(final_output, seq_decoder);
-    free_matrix(W_last, dmodel);
-    free_matrix(grad_first, seq_decoder);
-    free_matrix(grad_linear, seq_decoder);
-    free(expected_matrix);
-    free(b_last);
-    free_vocab();
-
     printf("\nCLOSE\n");
     return 0;
 }
