@@ -73,8 +73,8 @@ int main(void)
     int nb_input_neurons = raw_size*raw_size;
 
     input_layer = init_layer("input", nb_input_neurons, nb_input_neurons);
-    hidden_layer1 = init_layer("hidden", nb_input_neurons, nb_hidden_neurons);
-    hidden_layer2 = init_layer("hidden", nb_hidden_neurons, nb_hidden_neurons/2);
+    hidden_layer1 = init_layer("hidden1", nb_input_neurons, nb_hidden_neurons);
+    hidden_layer2 = init_layer("hidden2", nb_hidden_neurons, nb_hidden_neurons/2);
     output_layer = init_layer("output", nb_hidden_neurons/2, nb_output_neurons);
 
     /*
@@ -109,7 +109,7 @@ int main(void)
     raw_data = segment_to_matrix_28x28(raw_data, Wbin, Hbin, &out_n);
     printf("out n: %d\n", out_n);
 
-    while (running) {
+    while (running && c_steps < 100000) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) running = 0;
@@ -127,6 +127,14 @@ int main(void)
             train();
         SDL_Delay(16); //60 FPS
     }
+
+    struct layer layers[3] = {
+        hidden_layer1,
+        hidden_layer2,
+        output_layer
+    };
+
+    save_model("../save.json", layers, 3);
     printf("\nCLOSE\n");
 
     /*

@@ -73,6 +73,50 @@ int select_random_file(void) {
     return 0;
 }
 
+void save_model(const char *filename, struct layer *layers, int nb_layers) {
+    FILE *f = fopen(filename, "w");
+    if (!f) return;
+
+    fprintf(f, "{\n");
+
+    for (int l = 0; l < nb_layers; l++) {
+        struct layer layer = layers[l];
+
+        fprintf(f, "  \"%s\": {\n", layer.name);
+
+        // weights (2D)
+        fprintf(f, "    \"weights\": [\n");
+        for (int i = 0; i < layer.current_size; i++) {
+            fprintf(f, "      [");
+            for (int j = 0; j < layer.previous_size; j++) {
+                double val = layer.weights[i * layer.previous_size + j];
+                fprintf(f, "%f", val);
+                if (j < layer.previous_size - 1) fprintf(f, ", ");
+            }
+            fprintf(f, "]");
+            if (i < layer.current_size - 1) fprintf(f, ",");
+            fprintf(f, "\n");
+        }
+        fprintf(f, "    ],\n");
+
+        // biases
+        fprintf(f, "    \"biases\": [");
+        for (int i = 0; i < layer.current_size; i++) {
+            fprintf(f, "%f", layer.biases[i]);
+            if (i < layer.current_size - 1) fprintf(f, ", ");
+        }
+        fprintf(f, "]\n");
+
+        if (l < nb_layers - 1)
+            fprintf(f, "  },\n");
+        else
+            fprintf(f, "  }\n");
+    }
+
+    fprintf(f, "}\n");
+    fclose(f);
+}
+
 static int write_u32(FILE *f, uint32_t v){ return fwrite(&v, sizeof(v), 1, f) == 1; }
 static int write_u64(FILE *f, uint64_t v){ return fwrite(&v, sizeof(v), 1, f) == 1; }
 
